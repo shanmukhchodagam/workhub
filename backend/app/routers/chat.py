@@ -4,6 +4,10 @@ from app.core.config import settings
 import json
 import redis.asyncio as redis
 import asyncio
+from app.core.database import AsyncSessionLocal
+from app.models.message import Message
+from app.models.user import User
+from sqlalchemy import select
 
 router = APIRouter()
 
@@ -16,7 +20,22 @@ async def websocket_worker_endpoint(websocket: WebSocket, client_id: int):
         while True:
             data = await websocket.receive_text()
             
-            # Save to DB (mock)
+            # Save to DB
+            async with AsyncSessionLocal() as session:
+                # Check if user exists
+                result = await session.execute(select(User).where(User.id == client_id))
+                user = result.scalar_one_or_none()
+                
+                if not user:
+                    # Create user if not exists
+                    user = User(id=client_id, username=f"worker_{client_id}", role="worker")
+                    session.add(user)
+                    await session.commit()
+                    await session.refresh(user)
+                
+                message = Message(content=data, sender_id=client_id)
+                session.add(message)
+                await session.commit()
             
             # Publish to Redis for Agent
             message_data = {
