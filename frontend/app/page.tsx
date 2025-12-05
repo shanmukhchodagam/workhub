@@ -14,18 +14,16 @@ export default function Home() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
-          <Link href="/worker">
+          <Link href="/login">
             <Button size="lg" className="w-full sm:w-auto gap-2 h-16 text-lg">
-              <HardHat />
-              Worker Interface
+              Sign In
               <ArrowRight size={16} />
             </Button>
           </Link>
 
-          <Link href="/manager">
+          <Link href="/register">
             <Button size="lg" variant="outline" className="w-full sm:w-auto gap-2 h-16 text-lg">
-              <LayoutDashboard />
-              Manager Dashboard
+              Create Manager Account
               <ArrowRight size={16} />
             </Button>
           </Link>
