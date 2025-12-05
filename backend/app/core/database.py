@@ -3,14 +3,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from .config import settings
 
 engine = create_async_engine(
-    settings.ASYNC_DATABASE_URL, 
+    settings.DATABASE_URL,
     echo=True,
-    connect_args={
-        "ssl": "require",
-        "server_settings": {
-            "application_name": "workhub"
-        }
-    }
+    connect_args={"statement_cache_size": 0}
 )
 
 AsyncSessionLocal = sessionmaker(

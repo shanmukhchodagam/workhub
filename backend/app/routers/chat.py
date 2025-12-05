@@ -4,6 +4,10 @@ from app.core.config import settings
 import json
 import redis.asyncio as redis
 import asyncio
+from app.core.database import AsyncSessionLocal
+from app.models.message import Message
+from app.models.user import User
+from sqlalchemy import select
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,62 +31,22 @@ async def websocket_worker_endpoint(websocket: WebSocket, client_id: int):
             data = await websocket.receive_text()
             print(f"Received message from worker {client_id}: {data}")
             
-            # ALL messages go to both AI and Manager - no keyword filtering
+            # Save to DB
             async with AsyncSessionLocal() as session:
-                # Get worker info
+                # Check if user exists
                 result = await session.execute(select(User).where(User.id == client_id))
                 user = result.scalar_one_or_none()
                 
                 if not user:
-                    print(f"User {client_id} not found!")
-                    continue
-
-                # Find or Create Chat Session
-                result = await session.execute(
-                    select(ChatSession).where(
-                        ChatSession.user_id == client_id,
-                        ChatSession.team_id == user.team_id
-                    ).order_by(ChatSession.created_at.desc())
-                )
-                chat_session = result.scalars().first()
-                
-                if not chat_session:
-                    chat_session = ChatSession(user_id=client_id, team_id=user.team_id)
-                    session.add(chat_session)
+                    # Create user if not exists
+                    user = User(id=client_id, username=f"worker_{client_id}", role="worker")
+                    session.add(user)
                     await session.commit()
-                    await session.refresh(chat_session)
+                    await session.refresh(user)
                 
-                # Save message to database
-                message = Message(content=data, chat_id=chat_session.id, sender="Worker")
+                message = Message(content=data, sender_id=client_id)
                 session.add(message)
                 await session.commit()
-                await session.refresh(message)
-                
-                print(f"Message saved to database with ID: {message.id}")
-                
-                # Find team manager and send ALL messages to manager
-                manager_result = await session.execute(
-                    select(User).where(
-                        User.team_id == user.team_id,
-                        User.role == "Manager"
-                    )
-                )
-                team_manager = manager_result.scalar_one_or_none()
-                
-                if team_manager:
-                    print(f"Sending ALL worker messages to manager: {team_manager.id}")
-                    # Send to manager via WebSocket
-                    message_data = {
-                        "type": "worker_message",
-                        "content": data,
-                        "sender_id": client_id,
-                        "sender_name": user.full_name or user.email,
-                        "timestamp": message.created_at.isoformat()
-                    }
-                    success = await manager.send_to_manager(team_manager.id, message_data)
-                    print(f"Message sent to manager: {success}")
-                else:
-                    print(f"No manager found for team {user.team_id}")
             
             # Also send to AI for processing
             message_data = {
