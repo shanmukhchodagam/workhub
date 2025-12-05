@@ -6,6 +6,8 @@ export const useWebSocket = (url: string) => {
     const ws = useRef<WebSocket | null>(null);
 
     useEffect(() => {
+        if (!url) return;
+
         const socket = new WebSocket(url);
 
         socket.onopen = () => {
