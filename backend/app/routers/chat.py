@@ -31,22 +31,62 @@ async def websocket_worker_endpoint(websocket: WebSocket, client_id: int):
             data = await websocket.receive_text()
             print(f"Received message from worker {client_id}: {data}")
             
-            # Save to DB
+            # ALL messages go to both AI and Manager - no keyword filtering
             async with AsyncSessionLocal() as session:
-                # Check if user exists
+                # Get worker info
                 result = await session.execute(select(User).where(User.id == client_id))
                 user = result.scalar_one_or_none()
                 
                 if not user:
-                    # Create user if not exists
-                    user = User(id=client_id, username=f"worker_{client_id}", role="worker")
-                    session.add(user)
-                    await session.commit()
-                    await session.refresh(user)
+                    print(f"User {client_id} not found!")
+                    continue
+
+                # Find or Create Chat Session
+                result = await session.execute(
+                    select(ChatSession).where(
+                        ChatSession.user_id == client_id,
+                        ChatSession.team_id == user.team_id
+                    ).order_by(ChatSession.created_at.desc())
+                )
+                chat_session = result.scalars().first()
                 
-                message = Message(content=data, sender_id=client_id)
+                if not chat_session:
+                    chat_session = ChatSession(user_id=client_id, team_id=user.team_id)
+                    session.add(chat_session)
+                    await session.commit()
+                    await session.refresh(chat_session)
+                
+                # Save message to database
+                message = Message(content=data, chat_id=chat_session.id, sender="Worker")
                 session.add(message)
                 await session.commit()
+                await session.refresh(message)
+                
+                print(f"Message saved to database with ID: {message.id}")
+                
+                # Find team manager and send ALL messages to manager
+                manager_result = await session.execute(
+                    select(User).where(
+                        User.team_id == user.team_id,
+                        User.role == "Manager"
+                    )
+                )
+                team_manager = manager_result.scalar_one_or_none()
+                
+                if team_manager:
+                    print(f"Sending ALL worker messages to manager: {team_manager.id}")
+                    # Send to manager via WebSocket
+                    message_data = {
+                        "type": "worker_message",
+                        "content": data,
+                        "sender_id": client_id,
+                        "sender_name": user.full_name or user.email,
+                        "timestamp": message.created_at.isoformat()
+                    }
+                    success = await manager.send_to_manager(team_manager.id, message_data)
+                    print(f"Message sent to manager: {success}")
+                else:
+                    print(f"No manager found for team {user.team_id}")
             
             # Also send to AI for processing
             message_data = {
