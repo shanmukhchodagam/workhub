@@ -7,6 +7,7 @@ from agent import app
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
+print("Attempting to connect to Redis...", flush=True)
 r = redis.from_url(REDIS_URL)
 pubsub = r.pubsub()
 pubsub.subscribe("workhub_chat")
