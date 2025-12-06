@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, Base
 from app.core.config import settings
-from app.routers import tasks, incidents, chat, auth
+from app.routers import tasks, incidents, chat, auth, attendance
 from app.core.websocket import manager
-from app.models import User, Team, Task, Incident, Message # Ensure models are loaded
+from app.models import User, Team, Task, Incident, Message, Attendance # Ensure models are loaded
 import json
 import redis.asyncio as redis
 import asyncio
@@ -23,6 +23,7 @@ app.include_router(tasks.router)
 app.include_router(incidents.router)
 app.include_router(chat.router)
 app.include_router(auth.router)
+app.include_router(attendance.router)
 
 redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 

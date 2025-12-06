@@ -136,27 +136,47 @@ class DatabaseProcessor:
     async def create_permission_request(self, sender_id: int, message: str, entities: Dict) -> bool:
         """Create permission request from worker message"""
         try:
-            # Categorize permission type
-            permission_types = {
-                "overtime": ["overtime", "extra hours", "weekend", "holiday"],
-                "access": ["access", "restricted", "locked", "secure"],
-                "equipment": ["equipment", "machine", "tool", "vehicle"],
-                "leave": ["leave", "time off", "sick", "vacation"],
-                "general": []
-            }
+            # Determine request type
+            message_lower = message.lower()
             
-            perm_type = "general"
-            for p_type, keywords in permission_types.items():
-                if any(keyword in message.lower() for keyword in keywords):
-                    perm_type = p_type
-                    break
+            if any(word in message_lower for word in ["overtime", "extra hours", "weekend", "holiday"]):
+                request_type = "overtime"
+                title = "Overtime Request"
+            elif any(word in message_lower for word in ["vacation", "leave", "time off", "holiday"]):
+                request_type = "vacation"
+                title = "Vacation Request"
+            elif any(word in message_lower for word in ["sick", "ill", "medical"]):
+                request_type = "sick_leave"
+                title = "Sick Leave Request"
+            elif any(word in message_lower for word in ["access", "permission", "authorization"]):
+                request_type = "special_access"
+                title = "Special Access Request"
+            else:
+                request_type = "general"
+                title = "General Permission Request"
             
-            # Create permission request (assuming we need to create this table)
-            # For now, let's log it properly
-            print(f"📋 Permission request: {perm_type} - {message}")
+            # Determine priority
+            urgency = entities.get("urgency", [])
+            is_urgent = any(word in ["urgent", "emergency", "asap"] for word in urgency)
+            priority = "urgent" if is_urgent else "normal"
             
-            # TODO: Create permissions table if it doesn't exist
-            # For now, return success
+            # Get manager (assume manager has id 1 for now, can be improved)
+            manager_id = 1  # TODO: Get actual manager from user's team
+            
+            # Insert permission request
+            create_query = """
+                INSERT INTO permission_requests 
+                (user_id, manager_id, request_type, title, description, priority, is_urgent)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id
+            """
+            
+            permission_id = await self.connection.fetchval(
+                create_query, sender_id, manager_id, request_type, 
+                title, message, priority, is_urgent
+            )
+            
+            print(f"📋 Permission request: {request_type} - {message}")
             return True
             
         except Exception as e:
@@ -167,23 +187,71 @@ class DatabaseProcessor:
         """Update attendance based on worker message"""
         try:
             # Determine attendance action
-            attendance_actions = {
-                "check_in": ["check in", "arrived", "here", "present", "on site"],
-                "check_out": ["check out", "leaving", "finished", "going home"],
-                "break_start": ["break", "lunch", "rest"],
-                "break_end": ["back", "return", "resume"]
-            }
+            message_lower = message.lower()
             
-            action = "check_in"  # default
-            for act, keywords in attendance_actions.items():
-                if any(keyword in message.lower() for keyword in keywords):
-                    action = act
-                    break
+            if any(word in message_lower for word in ["check in", "checked in", "arrived", "here", "present"]):
+                action = "check_in"
+            elif any(word in message_lower for word in ["check out", "leaving", "going home", "finished"]):
+                action = "check_out"
+            elif any(word in message_lower for word in ["break", "lunch", "rest"]):
+                action = "break_start"
+            elif any(word in message_lower for word in ["back", "return", "resume"]):
+                action = "break_end"
+            else:
+                action = "check_in"  # default
             
-            # Log attendance (assuming attendance table structure)
+            # Get or create today's attendance record
+            today_query = """
+                SELECT id, status FROM attendance 
+                WHERE user_id = $1 AND DATE(created_at) = CURRENT_DATE
+                ORDER BY created_at DESC LIMIT 1
+            """
+            
+            existing = await self.connection.fetchrow(today_query, sender_id)
+            
+            if existing:
+                # Update existing record
+                if action == "check_in":
+                    update_query = """
+                        UPDATE attendance 
+                        SET check_in_time = NOW(), status = 'checked_in', 
+                            location = $3, notes = $4, updated_at = NOW()
+                        WHERE id = $1 AND user_id = $2
+                    """
+                elif action == "check_out":
+                    update_query = """
+                        UPDATE attendance 
+                        SET check_out_time = NOW(), status = 'checked_out', 
+                            notes = $4, updated_at = NOW()
+                        WHERE id = $1 AND user_id = $2
+                    """
+                elif action == "break_start":
+                    update_query = """
+                        UPDATE attendance 
+                        SET break_start = NOW(), status = 'on_break', 
+                            notes = $4, updated_at = NOW()
+                        WHERE id = $1 AND user_id = $2
+                    """
+                else:  # break_end
+                    update_query = """
+                        UPDATE attendance 
+                        SET break_end = NOW(), status = 'checked_in', 
+                            notes = $4, updated_at = NOW()
+                        WHERE id = $1 AND user_id = $2
+                    """
+                
+                location = entities.get("locations", [""])[0] if entities.get("locations") else ""
+                await self.connection.execute(update_query, existing['id'], sender_id, location, message[:255])
+            else:
+                # Create new attendance record
+                create_query = """
+                    INSERT INTO attendance (user_id, check_in_time, status, location, notes)
+                    VALUES ($1, NOW(), 'checked_in', $2, $3)
+                """
+                location = entities.get("locations", [""])[0] if entities.get("locations") else ""
+                await self.connection.execute(create_query, sender_id, location, message[:255])
+            
             print(f"⏰ Attendance: {action} for worker {sender_id}")
-            
-            # TODO: Implement actual attendance table update
             return True
             
         except Exception as e:

@@ -5,3 +5,5 @@ from .message import Message
 from .team import Team
 from .document import Document
 from .chat_session import ChatSession
+from .attendance import Attendance
+from .permission_request import PermissionRequest

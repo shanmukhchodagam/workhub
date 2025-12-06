@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useWebSocket } from '@/hooks/use-websocket';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,7 +40,10 @@ import {
     Key,
     Trash2,
     UserCog,
-    Settings2
+    Settings2,
+    TrendingUp,
+    Search,
+    Filter
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -58,11 +62,50 @@ interface MenuItem {
     active?: boolean;
 }
 
+interface AttendanceRecord {
+    id: number;
+    user_id: number;
+    user_name: string;
+    check_in_time: string | null;
+    check_out_time: string | null;
+    break_start: string | null;
+    break_end: string | null;
+    location: string | null;
+    status: string;
+    notes: string | null;
+    work_hours: string | null;
+    created_at: string;
+}
+
+interface AttendanceAnalytics {
+    total_records: number;
+    date_range: { from: string; to: string };
+    status_breakdown: Record<string, number>;
+    daily_trend: { date: string; count: number }[];
+    employee_stats: {
+        user_id: number;
+        name: string;
+        email: string;
+        total_days: number;
+        present_days: number;
+        break_days: number;
+        attendance_rate: number;
+    }[];
+    summary: {
+        total_employees: number;
+        average_attendance_rate: number;
+        most_active_day: string | null;
+        total_check_ins: number;
+        total_breaks: number;
+    };
+}
+
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/app/context/AuthContext';
 
 export default function ManagerDashboard() {
     const { user, token, logout } = useAuth();
+    const router = useRouter();
     const [events, setEvents] = useState<DashboardEvent[]>([]);
     const [stats, setStats] = useState({
         activeWorkers: 12,
@@ -122,6 +165,16 @@ export default function ManagerDashboard() {
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsError, setSettingsError] = useState("");
     const [settingsSuccess, setSettingsSuccess] = useState("");
+
+    // Attendance State
+    const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+    const [attendanceAnalytics, setAttendanceAnalytics] = useState<AttendanceAnalytics | null>(null);
+    const [attendanceLoading, setAttendanceLoading] = useState(false);
+    const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
+    const [attendanceStatusFilter, setAttendanceStatusFilter] = useState('');
+    const [attendanceDateFrom, setAttendanceDateFrom] = useState('');
+    const [attendanceDateTo, setAttendanceDateTo] = useState('');
+    const [attendanceViewMode, setAttendanceViewMode] = useState<'table' | 'analytics'>('table');
 
     // Handler functions
     const handleLogout = () => {
@@ -415,6 +468,128 @@ export default function ManagerDashboard() {
         setSelectedWorker(worker);
         fetchChatMessages(worker.id);
     };
+
+    // Attendance Functions
+    const fetchAttendanceData = async () => {
+        if (!token) return;
+        
+        setAttendanceLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (attendanceStatusFilter) params.append('status', attendanceStatusFilter);
+            if (attendanceDateFrom) params.append('date_from', attendanceDateFrom);
+            if (attendanceDateTo) params.append('date_to', attendanceDateTo);
+            if (attendanceSearchTerm) params.append('search', attendanceSearchTerm);
+            
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/attendance?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setAttendanceData(data);
+            } else {
+                console.error('Error fetching attendance data:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            setAttendanceLoading(false);
+        }
+    };
+
+    const fetchAttendanceAnalytics = async () => {
+        if (!token) return;
+        
+        try {
+            const params = new URLSearchParams();
+            if (attendanceDateFrom) params.append('date_from', attendanceDateFrom);
+            if (attendanceDateTo) params.append('date_to', attendanceDateTo);
+            
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/attendance/analytics?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setAttendanceAnalytics(data);
+            } else {
+                console.error('Error fetching analytics:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    // Load attendance data when activeMenuItem changes to attendance
+    useEffect(() => {
+        if (activeMenuItem === 'attendance' && token) {
+            fetchAttendanceData();
+            fetchAttendanceAnalytics();
+        }
+    }, [activeMenuItem, token, attendanceStatusFilter, attendanceDateFrom, attendanceDateTo, attendanceSearchTerm]);
+
+    // Helper functions for attendance
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString();
+    };
+
+    const formatTime = (timeString: string | null) => {
+        if (!timeString) return '-';
+        return new Date(timeString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const getStatusBadge = (status: string) => {
+        const statusColors: Record<string, string> = {
+            'checked_in': 'bg-green-100 text-green-800',
+            'checked_out': 'bg-gray-100 text-gray-800',
+            'on_break': 'bg-yellow-100 text-yellow-800',
+            'sick_leave': 'bg-red-100 text-red-800',
+            'absent': 'bg-red-100 text-red-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusColors[status] || 'bg-blue-100 text-blue-800'}`}>
+                {status.replace('_', ' ').toUpperCase()}
+            </span>
+        );
+    };
+
+    const exportToCSV = () => {
+        const headers = ['Date', 'Employee', 'Check In', 'Check Out', 'Break Start', 'Break End', 'Status', 'Location', 'Work Hours'];
+        const csvData = attendanceData.map(record => [
+            formatDate(record.created_at),
+            record.user_name,
+            formatTime(record.check_in_time),
+            formatTime(record.check_out_time),
+            formatTime(record.break_start),
+            formatTime(record.break_end),
+            record.status,
+            record.location || '-',
+            record.work_hours || '-'
+        ]);
+        
+        const csvContent = [headers, ...csvData].map(row => row.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'attendance-report.csv';
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // Filter attendance data
+    const filteredAttendanceData = attendanceData.filter(record => {
+        const matchesSearch = attendanceSearchTerm === '' || 
+            record.user_name.toLowerCase().includes(attendanceSearchTerm.toLowerCase());
+        const matchesStatus = attendanceStatusFilter === '' || record.status === attendanceStatusFilter;
+        return matchesSearch && matchesStatus;
+    });
 
     return (
         <ProtectedRoute allowedRoles={['Manager']}>
@@ -827,8 +1002,248 @@ export default function ManagerDashboard() {
                         )}
 
                         {activeMenuItem === 'attendance' && (
-                            <div className="flex items-center justify-center h-64">
-                                <p className="text-gray-500">Attendance page - Coming soon</p>
+                            <div className="p-6 space-y-6">
+                                {/* Header with controls */}
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+                                    <div>
+                                        <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
+                                        <p className="text-gray-600">Track and manage employee attendance records</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            onClick={() => setAttendanceViewMode(attendanceViewMode === 'table' ? 'analytics' : 'table')}
+                                            variant="outline"
+                                            className="flex items-center gap-2"
+                                        >
+                                            {attendanceViewMode === 'table' ? <TrendingUp className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
+                                            {attendanceViewMode === 'table' ? 'Analytics View' : 'Table View'}
+                                        </Button>
+                                        <Button onClick={exportToCSV} variant="outline" className="flex items-center gap-2">
+                                            <Download className="h-4 w-4" />
+                                            Export CSV
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Filters */}
+                                <Card>
+                                    <CardContent className="p-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                <Input
+                                                    placeholder="Search employees..."
+                                                    value={attendanceSearchTerm}
+                                                    onChange={(e) => setAttendanceSearchTerm(e.target.value)}
+                                                    className="pl-10"
+                                                />
+                                            </div>
+                                            <div>
+                                                <select
+                                                    value={attendanceStatusFilter}
+                                                    onChange={(e) => setAttendanceStatusFilter(e.target.value)}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="">All Statuses</option>
+                                                    <option value="checked_in">Checked In</option>
+                                                    <option value="checked_out">Checked Out</option>
+                                                    <option value="on_break">On Break</option>
+                                                    <option value="sick_leave">Sick Leave</option>
+                                                    <option value="absent">Absent</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    type="date"
+                                                    placeholder="From Date"
+                                                    value={attendanceDateFrom}
+                                                    onChange={(e) => setAttendanceDateFrom(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    type="date"
+                                                    placeholder="To Date"
+                                                    value={attendanceDateTo}
+                                                    onChange={(e) => setAttendanceDateTo(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Button onClick={() => {
+                                                    setAttendanceSearchTerm('');
+                                                    setAttendanceStatusFilter('');
+                                                    setAttendanceDateFrom('');
+                                                    setAttendanceDateTo('');
+                                                }} variant="outline" className="w-full">
+                                                    <Filter className="h-4 w-4 mr-2" />
+                                                    Clear Filters
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                {attendanceViewMode === 'analytics' && attendanceAnalytics && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {/* Summary Cards */}
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <Users className="h-8 w-8 text-blue-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Total Employees</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{attendanceAnalytics.summary.total_employees}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <TrendingUp className="h-8 w-8 text-green-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Avg Attendance Rate</p>
+                                                        <p className="text-2xl font-bold text-gray-900">
+                                                            {attendanceAnalytics.summary.average_attendance_rate.toFixed(1)}%
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <Clock className="h-8 w-8 text-yellow-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Total Check-ins</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{attendanceAnalytics.summary.total_check_ins}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <Activity className="h-8 w-8 text-purple-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Total Records</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{attendanceAnalytics.total_records}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Status Breakdown */}
+                                        <Card className="lg:col-span-2">
+                                            <CardHeader>
+                                                <CardTitle>Status Breakdown</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {Object.entries(attendanceAnalytics.status_breakdown).map(([status, count]) => (
+                                                        <div key={status} className="flex items-center justify-between">
+                                                            <div className="flex items-center space-x-3">
+                                                                {getStatusBadge(status)}
+                                                                <span className="text-sm text-gray-600">
+                                                                    {status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-sm font-semibold text-gray-900">{count}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Employee Stats */}
+                                        <Card className="lg:col-span-2">
+                                            <CardHeader>
+                                                <CardTitle>Top Employee Performance</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {attendanceAnalytics.employee_stats.slice(0, 5).map((employee) => (
+                                                        <div key={employee.user_id} className="flex items-center justify-between">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-900">{employee.name}</p>
+                                                                <p className="text-xs text-gray-500">{employee.email}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="text-sm font-semibold text-green-600">
+                                                                    {employee.attendance_rate.toFixed(1)}%
+                                                                </p>
+                                                                <p className="text-xs text-gray-500">
+                                                                    {employee.present_days}/{employee.total_days} days
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {attendanceViewMode === 'table' && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Attendance Records</CardTitle>
+                                            <CardDescription>
+                                                {attendanceLoading ? 'Loading...' : `${filteredAttendanceData.length} records found`}
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {attendanceLoading ? (
+                                                <div className="text-center py-8">
+                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                                    <p className="text-gray-500 mt-2">Loading attendance data...</p>
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full border-collapse border border-gray-300">
+                                                        <thead>
+                                                            <tr className="bg-gray-50">
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Date</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Employee</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Check In</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Check Out</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Break Start</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Break End</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Status</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Location</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Work Hours</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {filteredAttendanceData.map((record) => (
+                                                                <tr key={record.id} className="hover:bg-gray-50">
+                                                                    <td className="border border-gray-300 p-3">{formatDate(record.created_at)}</td>
+                                                                    <td className="border border-gray-300 p-3 font-medium">{record.user_name}</td>
+                                                                    <td className="border border-gray-300 p-3">{formatTime(record.check_in_time)}</td>
+                                                                    <td className="border border-gray-300 p-3">{formatTime(record.check_out_time)}</td>
+                                                                    <td className="border border-gray-300 p-3">{formatTime(record.break_start)}</td>
+                                                                    <td className="border border-gray-300 p-3">{formatTime(record.break_end)}</td>
+                                                                    <td className="border border-gray-300 p-3">{getStatusBadge(record.status)}</td>
+                                                                    <td className="border border-gray-300 p-3">{record.location || '-'}</td>
+                                                                    <td className="border border-gray-300 p-3">{record.work_hours || '-'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+
+                                                    {filteredAttendanceData.length === 0 && (
+                                                        <div className="text-center py-8 text-gray-500">
+                                                            No attendance records found
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
                             </div>
                         )}
 
