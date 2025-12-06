@@ -100,6 +100,100 @@ interface AttendanceAnalytics {
     };
 }
 
+interface IncidentRecord {
+    id: number;
+    description: string;
+    severity: string;
+    status: string;
+    resolution: string | null;
+    reported_by: number;
+    reported_by_name: string;
+    reported_by_email: string;
+    image_url: string | null;
+    created_at: string;
+    updated_at: string | null;
+}
+
+interface IncidentStats {
+    total_incidents: number;
+    open_incidents: number;
+    resolved_incidents: number;
+    critical_incidents: number;
+    high_incidents: number;
+    medium_incidents: number;
+    low_incidents: number;
+    incidents_by_status: Record<string, number>;
+    incidents_by_severity: Record<string, number>;
+    recent_incidents: IncidentRecord[];
+    monthly_trend: { month: string; count: number }[];
+}
+
+interface IncidentCreate {
+    description: string;
+    severity: string;
+    image_url?: string;
+}
+
+interface IncidentUpdate {
+    description?: string;
+    severity?: string;
+    status?: string;
+    resolution?: string;
+    image_url?: string;
+}
+
+interface PermissionRequest {
+    id: number;
+    request_type: string;
+    title: string;
+    description: string;
+    requested_date: string | null;
+    requested_hours: string | null;
+    priority: string;
+    is_urgent: boolean;
+    user_id: number;
+    requester_name: string;
+    requester_email: string;
+    manager_id: number | null;
+    manager_name: string | null;
+    status: string;
+    manager_response: string | null;
+    approved_by: number | null;
+    approver_name: string | null;
+    approved_at: string | null;
+    created_at: string;
+    updated_at: string | null;
+}
+
+interface PermissionStats {
+    total_requests: number;
+    pending_requests: number;
+    approved_requests: number;
+    rejected_requests: number;
+    urgent_requests: number;
+    requests_by_status: Record<string, number>;
+    requests_by_type: Record<string, number>;
+    requests_by_priority: Record<string, number>;
+    recent_requests: PermissionRequest[];
+    monthly_trend: { month: string; count: number }[];
+}
+
+interface PermissionCreate {
+    request_type: string;
+    title: string;
+    description: string;
+    requested_date?: string;
+    requested_hours?: string;
+    priority: string;
+    is_urgent: boolean;
+}
+
+interface PermissionUpdate {
+    status?: string;
+    manager_response?: string;
+    priority?: string;
+}
+
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/app/context/AuthContext';
 
@@ -175,6 +269,36 @@ export default function ManagerDashboard() {
     const [attendanceDateFrom, setAttendanceDateFrom] = useState('');
     const [attendanceDateTo, setAttendanceDateTo] = useState('');
     const [attendanceViewMode, setAttendanceViewMode] = useState<'table' | 'analytics'>('table');
+
+    // Incidents State
+    const [incidentsData, setIncidentsData] = useState<IncidentRecord[]>([]);
+    const [incidentsStats, setIncidentsStats] = useState<IncidentStats | null>(null);
+    const [incidentsLoading, setIncidentsLoading] = useState(false);
+    const [incidentsSearchTerm, setIncidentsSearchTerm] = useState('');
+    const [incidentsStatusFilter, setIncidentsStatusFilter] = useState('');
+    const [incidentsSeverityFilter, setIncidentsSeverityFilter] = useState('');
+    const [incidentsDateFrom, setIncidentsDateFrom] = useState('');
+    const [incidentsDateTo, setIncidentsDateTo] = useState('');
+    const [incidentsViewMode, setIncidentsViewMode] = useState<'table' | 'stats' | 'create'>('table');
+    const [editingIncident, setEditingIncident] = useState<IncidentRecord | null>(null);
+    const [newIncident, setNewIncident] = useState<IncidentCreate>({
+        description: '',
+        severity: 'low'
+    });
+
+    // Permissions State
+    const [permissionsData, setPermissionsData] = useState<PermissionRequest[]>([]);
+    const [permissionsStats, setPermissionsStats] = useState<PermissionStats | null>(null);
+    const [permissionsLoading, setPermissionsLoading] = useState(false);
+    const [permissionsSearchTerm, setPermissionsSearchTerm] = useState('');
+    const [permissionsStatusFilter, setPermissionsStatusFilter] = useState('');
+    const [permissionsTypeFilter, setPermissionsTypeFilter] = useState('');
+    const [permissionsPriorityFilter, setPermissionsPriorityFilter] = useState('');
+    const [permissionsDateFrom, setPermissionsDateFrom] = useState('');
+    const [permissionsDateTo, setPermissionsDateTo] = useState('');
+    const [permissionsViewMode, setPermissionsViewMode] = useState<'table' | 'stats'>('table');
+    const [reviewingPermission, setReviewingPermission] = useState<PermissionRequest | null>(null);
+    const [reviewResponse, setReviewResponse] = useState('');
 
     // Handler functions
     const handleLogout = () => {
@@ -589,6 +713,314 @@ export default function ManagerDashboard() {
             record.user_name.toLowerCase().includes(attendanceSearchTerm.toLowerCase());
         const matchesStatus = attendanceStatusFilter === '' || record.status === attendanceStatusFilter;
         return matchesSearch && matchesStatus;
+    });
+
+    // Incidents Functions
+    const fetchIncidentsData = async () => {
+        if (!token) return;
+        
+        setIncidentsLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (incidentsStatusFilter) params.append('status', incidentsStatusFilter);
+            if (incidentsSeverityFilter) params.append('severity', incidentsSeverityFilter);
+            if (incidentsDateFrom) params.append('date_from', incidentsDateFrom);
+            if (incidentsDateTo) params.append('date_to', incidentsDateTo);
+            if (incidentsSearchTerm) params.append('search', incidentsSearchTerm);
+            
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/incidents?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setIncidentsData(data);
+            } else {
+                console.error('Error fetching incidents data:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            setIncidentsLoading(false);
+        }
+    };
+
+    const fetchIncidentsStats = async () => {
+        if (!token) return;
+        
+        try {
+            const params = new URLSearchParams();
+            if (incidentsDateFrom) params.append('date_from', incidentsDateFrom);
+            if (incidentsDateTo) params.append('date_to', incidentsDateTo);
+            
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/incidents/stats?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setIncidentsStats(data);
+            } else {
+                console.error('Error fetching incidents stats:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    const createIncident = async () => {
+        if (!token || !newIncident.description) return;
+        
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/incidents`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(newIncident)
+            });
+            
+            if (res.ok) {
+                setNewIncident({ description: '', severity: 'low' });
+                setIncidentsViewMode('table');
+                fetchIncidentsData();
+                fetchIncidentsStats();
+            } else {
+                console.error('Error creating incident:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    const updateIncident = async (incidentId: number, updateData: IncidentUpdate) => {
+        if (!token) return;
+        
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/incidents/${incidentId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(updateData)
+            });
+            
+            if (res.ok) {
+                setEditingIncident(null);
+                fetchIncidentsData();
+                fetchIncidentsStats();
+            } else {
+                console.error('Error updating incident:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    // Load incidents data when activeMenuItem changes to incidents
+    useEffect(() => {
+        if (activeMenuItem === 'incidents' && token) {
+            fetchIncidentsData();
+            fetchIncidentsStats();
+        }
+    }, [activeMenuItem, token, incidentsStatusFilter, incidentsSeverityFilter, incidentsDateFrom, incidentsDateTo, incidentsSearchTerm]);
+
+    // Helper functions for incidents
+    const getSeverityBadge = (severity: string) => {
+        const severityColors: Record<string, string> = {
+            'low': 'bg-blue-100 text-blue-800',
+            'medium': 'bg-yellow-100 text-yellow-800',
+            'high': 'bg-orange-100 text-orange-800',
+            'critical': 'bg-red-100 text-red-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${severityColors[severity] || 'bg-gray-100 text-gray-800'}`}>
+                {severity.toUpperCase()}
+            </span>
+        );
+    };
+
+    const getIncidentStatusBadge = (status: string) => {
+        const statusColors: Record<string, string> = {
+            'open': 'bg-red-100 text-red-800',
+            'in_progress': 'bg-yellow-100 text-yellow-800',
+            'resolved': 'bg-green-100 text-green-800',
+            'closed': 'bg-gray-100 text-gray-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusColors[status] || 'bg-blue-100 text-blue-800'}`}>
+                {status.replace('_', ' ').toUpperCase()}
+            </span>
+        );
+    };
+
+    // Filter incidents data
+    const filteredIncidentsData = incidentsData.filter(incident => {
+        const matchesSearch = incidentsSearchTerm === '' || 
+            incident.description.toLowerCase().includes(incidentsSearchTerm.toLowerCase()) ||
+            incident.reported_by_name.toLowerCase().includes(incidentsSearchTerm.toLowerCase());
+        const matchesStatus = incidentsStatusFilter === '' || incident.status === incidentsStatusFilter;
+        const matchesSeverity = incidentsSeverityFilter === '' || incident.severity === incidentsSeverityFilter;
+        return matchesSearch && matchesStatus && matchesSeverity;
+    });
+
+    // Permissions Functions
+    const fetchPermissionsData = async () => {
+        if (!token) return;
+        
+        setPermissionsLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (permissionsStatusFilter) params.append('status', permissionsStatusFilter);
+            if (permissionsTypeFilter) params.append('request_type', permissionsTypeFilter);
+            if (permissionsPriorityFilter) params.append('priority', permissionsPriorityFilter);
+            if (permissionsDateFrom) params.append('date_from', permissionsDateFrom);
+            if (permissionsDateTo) params.append('date_to', permissionsDateTo);
+            if (permissionsSearchTerm) params.append('search', permissionsSearchTerm);
+            
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/permissions?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setPermissionsData(data);
+            } else {
+                console.error('Error fetching permissions data:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            setPermissionsLoading(false);
+        }
+    };
+
+    const fetchPermissionsStats = async () => {
+        if (!token) return;
+        
+        try {
+            const params = new URLSearchParams();
+            if (permissionsDateFrom) params.append('date_from', permissionsDateFrom);
+            if (permissionsDateTo) params.append('date_to', permissionsDateTo);
+            
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/permissions/stats?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setPermissionsStats(data);
+            } else {
+                console.error('Error fetching permissions stats:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    const updatePermissionRequest = async (requestId: number, updateData: PermissionUpdate) => {
+        if (!token) return;
+        
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/permissions/${requestId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(updateData)
+            });
+            
+            if (res.ok) {
+                setReviewingPermission(null);
+                setReviewResponse('');
+                fetchPermissionsData();
+                fetchPermissionsStats();
+            } else {
+                console.error('Error updating permission request:', await res.json());
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    // Load permissions data when activeMenuItem changes to permissions
+    useEffect(() => {
+        if (activeMenuItem === 'permissions' && token) {
+            fetchPermissionsData();
+            fetchPermissionsStats();
+        }
+    }, [activeMenuItem, token, permissionsStatusFilter, permissionsTypeFilter, permissionsPriorityFilter, permissionsDateFrom, permissionsDateTo, permissionsSearchTerm]);
+
+    // Helper functions for permissions
+    const getRequestTypeBadge = (type: string) => {
+        const typeColors: Record<string, string> = {
+            'overtime': 'bg-blue-100 text-blue-800',
+            'vacation': 'bg-green-100 text-green-800',
+            'sick_leave': 'bg-yellow-100 text-yellow-800',
+            'special_access': 'bg-purple-100 text-purple-800',
+            'early_leave': 'bg-orange-100 text-orange-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${typeColors[type] || 'bg-gray-100 text-gray-800'}`}>
+                {type.replace('_', ' ').toUpperCase()}
+            </span>
+        );
+    };
+
+    const getPriorityBadge = (priority: string) => {
+        const priorityColors: Record<string, string> = {
+            'urgent': 'bg-red-100 text-red-800',
+            'high': 'bg-orange-100 text-orange-800',
+            'normal': 'bg-blue-100 text-blue-800',
+            'low': 'bg-gray-100 text-gray-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${priorityColors[priority] || 'bg-blue-100 text-blue-800'}`}>
+                {priority.toUpperCase()}
+            </span>
+        );
+    };
+
+    const getPermissionStatusBadge = (status: string) => {
+        const statusColors: Record<string, string> = {
+            'pending': 'bg-yellow-100 text-yellow-800',
+            'approved': 'bg-green-100 text-green-800',
+            'rejected': 'bg-red-100 text-red-800',
+            'under_review': 'bg-blue-100 text-blue-800'
+        };
+
+        return (
+            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusColors[status] || 'bg-gray-100 text-gray-800'}`}>
+                {status.replace('_', ' ').toUpperCase()}
+            </span>
+        );
+    };
+
+    // Filter permissions data
+    const filteredPermissionsData = permissionsData.filter(request => {
+        const matchesSearch = permissionsSearchTerm === '' || 
+            request.title.toLowerCase().includes(permissionsSearchTerm.toLowerCase()) ||
+            request.description.toLowerCase().includes(permissionsSearchTerm.toLowerCase()) ||
+            request.requester_name.toLowerCase().includes(permissionsSearchTerm.toLowerCase());
+        const matchesStatus = permissionsStatusFilter === '' || request.status === permissionsStatusFilter;
+        const matchesType = permissionsTypeFilter === '' || request.request_type === permissionsTypeFilter;
+        const matchesPriority = permissionsPriorityFilter === '' || request.priority === permissionsPriorityFilter;
+        return matchesSearch && matchesStatus && matchesType && matchesPriority;
     });
 
     return (
@@ -1248,14 +1680,833 @@ export default function ManagerDashboard() {
                         )}
 
                         {activeMenuItem === 'incidents' && (
-                            <div className="flex items-center justify-center h-64">
-                                <p className="text-gray-500">Incidents & Reports page - Coming soon</p>
+                            <div className="p-6 space-y-6">
+                                {/* Header with controls */}
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+                                    <div>
+                                        <h1 className="text-2xl font-bold text-gray-900">Incidents & Reports</h1>
+                                        <p className="text-gray-600">Track and manage workplace incidents and reports</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            onClick={() => setIncidentsViewMode('create')}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Create Incident
+                                        </Button>
+                                        <Button
+                                            onClick={() => setIncidentsViewMode(incidentsViewMode === 'table' ? 'stats' : 'table')}
+                                            variant="outline"
+                                            className="flex items-center gap-2"
+                                        >
+                                            {incidentsViewMode === 'table' ? <TrendingUp className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                                            {incidentsViewMode === 'table' ? 'Statistics' : 'Table View'}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Filters */}
+                                <Card>
+                                    <CardContent className="p-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                <Input
+                                                    placeholder="Search incidents..."
+                                                    value={incidentsSearchTerm}
+                                                    onChange={(e) => setIncidentsSearchTerm(e.target.value)}
+                                                    className="pl-10"
+                                                />
+                                            </div>
+                                            <div>
+                                                <select
+                                                    value={incidentsStatusFilter}
+                                                    onChange={(e) => setIncidentsStatusFilter(e.target.value)}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="">All Status</option>
+                                                    <option value="open">Open</option>
+                                                    <option value="in_progress">In Progress</option>
+                                                    <option value="resolved">Resolved</option>
+                                                    <option value="closed">Closed</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <select
+                                                    value={incidentsSeverityFilter}
+                                                    onChange={(e) => setIncidentsSeverityFilter(e.target.value)}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="">All Severity</option>
+                                                    <option value="low">Low</option>
+                                                    <option value="medium">Medium</option>
+                                                    <option value="high">High</option>
+                                                    <option value="critical">Critical</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    type="date"
+                                                    placeholder="From Date"
+                                                    value={incidentsDateFrom}
+                                                    onChange={(e) => setIncidentsDateFrom(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    type="date"
+                                                    placeholder="To Date"
+                                                    value={incidentsDateTo}
+                                                    onChange={(e) => setIncidentsDateTo(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Button onClick={() => {
+                                                    setIncidentsSearchTerm('');
+                                                    setIncidentsStatusFilter('');
+                                                    setIncidentsSeverityFilter('');
+                                                    setIncidentsDateFrom('');
+                                                    setIncidentsDateTo('');
+                                                }} variant="outline" className="w-full">
+                                                    <Filter className="h-4 w-4 mr-2" />
+                                                    Clear Filters
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                {/* Create Incident Form */}
+                                {incidentsViewMode === 'create' && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Create New Incident</CardTitle>
+                                            <CardDescription>Report a new workplace incident</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                                <textarea
+                                                    value={newIncident.description}
+                                                    onChange={(e) => setNewIncident(prev => ({ ...prev, description: e.target.value }))}
+                                                    placeholder="Describe the incident in detail..."
+                                                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                    rows={4}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Severity</label>
+                                                <select
+                                                    value={newIncident.severity}
+                                                    onChange={(e) => setNewIncident(prev => ({ ...prev, severity: e.target.value }))}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="low">Low</option>
+                                                    <option value="medium">Medium</option>
+                                                    <option value="high">High</option>
+                                                    <option value="critical">Critical</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Image URL (Optional)</label>
+                                                <Input
+                                                    type="url"
+                                                    value={newIncident.image_url || ''}
+                                                    onChange={(e) => setNewIncident(prev => ({ ...prev, image_url: e.target.value }))}
+                                                    placeholder="https://example.com/image.jpg"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button onClick={createIncident} disabled={!newIncident.description}>
+                                                    Create Incident
+                                                </Button>
+                                                <Button 
+                                                    variant="outline" 
+                                                    onClick={() => {
+                                                        setIncidentsViewMode('table');
+                                                        setNewIncident({ description: '', severity: 'low' });
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {/* Statistics View */}
+                                {incidentsViewMode === 'stats' && incidentsStats && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {/* Summary Cards */}
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <AlertTriangle className="h-8 w-8 text-red-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Total Incidents</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{incidentsStats.total_incidents}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <Clock className="h-8 w-8 text-yellow-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Open Incidents</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{incidentsStats.open_incidents}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <CheckCircle className="h-8 w-8 text-green-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Resolved</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{incidentsStats.resolved_incidents}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <AlertTriangle className="h-8 w-8 text-red-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Critical</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{incidentsStats.critical_incidents}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Severity Breakdown */}
+                                        <Card className="lg:col-span-2">
+                                            <CardHeader>
+                                                <CardTitle>Severity Breakdown</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {Object.entries(incidentsStats.incidents_by_severity).map(([severity, count]) => (
+                                                        <div key={severity} className="flex items-center justify-between">
+                                                            <div className="flex items-center space-x-3">
+                                                                {getSeverityBadge(severity)}
+                                                                <span className="text-sm text-gray-600">
+                                                                    {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-sm font-semibold text-gray-900">{count}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Recent Incidents */}
+                                        <Card className="lg:col-span-2">
+                                            <CardHeader>
+                                                <CardTitle>Recent Incidents</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {incidentsStats.recent_incidents.slice(0, 5).map((incident) => (
+                                                        <div key={incident.id} className="flex items-start space-x-3 p-3 border rounded-lg">
+                                                            <div className="flex-1">
+                                                                <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                                                                    {incident.description}
+                                                                </p>
+                                                                <div className="flex items-center space-x-2 mt-2">
+                                                                    {getSeverityBadge(incident.severity)}
+                                                                    {getIncidentStatusBadge(incident.status)}
+                                                                    <span className="text-xs text-gray-500">
+                                                                        by {incident.reported_by_name}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <span className="text-xs text-gray-500">
+                                                                {new Date(incident.created_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Table View */}
+                                {incidentsViewMode === 'table' && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Incidents & Reports</CardTitle>
+                                            <CardDescription>
+                                                {incidentsLoading ? 'Loading...' : `${filteredIncidentsData.length} incidents found`}
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {incidentsLoading ? (
+                                                <div className="text-center py-8">
+                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                                    <p className="text-gray-500 mt-2">Loading incidents...</p>
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full border-collapse border border-gray-300">
+                                                        <thead>
+                                                            <tr className="bg-gray-50">
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">ID</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Description</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Severity</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Status</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Reporter</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Created</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {filteredIncidentsData.map((incident) => (
+                                                                <tr key={incident.id} className="hover:bg-gray-50">
+                                                                    <td className="border border-gray-300 p-3">#{incident.id}</td>
+                                                                    <td className="border border-gray-300 p-3 max-w-xs">
+                                                                        <p className="line-clamp-2">{incident.description}</p>
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">{getSeverityBadge(incident.severity)}</td>
+                                                                    <td className="border border-gray-300 p-3">{getIncidentStatusBadge(incident.status)}</td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        <div>
+                                                                            <p className="font-medium">{incident.reported_by_name}</p>
+                                                                            <p className="text-xs text-gray-500">{incident.reported_by_email}</p>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        {new Date(incident.created_at).toLocaleDateString()}
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        <div className="flex gap-2">
+                                                                            {incident.status !== 'resolved' && incident.status !== 'closed' && (
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    variant="outline"
+                                                                                    onClick={() => updateIncident(incident.id, { status: 'resolved' })}
+                                                                                >
+                                                                                    Resolve
+                                                                                </Button>
+                                                                            )}
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="ghost"
+                                                                                onClick={() => setEditingIncident(incident)}
+                                                                            >
+                                                                                Edit
+                                                                            </Button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+
+                                                    {filteredIncidentsData.length === 0 && (
+                                                        <div className="text-center py-8 text-gray-500">
+                                                            No incidents found
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {/* Edit Modal */}
+                                {editingIncident && (
+                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                        <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                                            <h3 className="text-lg font-semibold mb-4">Edit Incident #{editingIncident.id}</h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                                    <select
+                                                        value={editingIncident.status}
+                                                        onChange={(e) => setEditingIncident(prev => prev ? { ...prev, status: e.target.value } : null)}
+                                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                                    >
+                                                        <option value="open">Open</option>
+                                                        <option value="in_progress">In Progress</option>
+                                                        <option value="resolved">Resolved</option>
+                                                        <option value="closed">Closed</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">Resolution</label>
+                                                    <textarea
+                                                        value={editingIncident.resolution || ''}
+                                                        onChange={(e) => setEditingIncident(prev => prev ? { ...prev, resolution: e.target.value } : null)}
+                                                        placeholder="Describe how this incident was resolved..."
+                                                        className="w-full p-3 border border-gray-300 rounded-md"
+                                                        rows={3}
+                                                    />
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button 
+                                                        onClick={() => updateIncident(editingIncident.id, {
+                                                            status: editingIncident.status,
+                                                            resolution: editingIncident.resolution || undefined
+                                                        })}
+                                                    >
+                                                        Update
+                                                    </Button>
+                                                    <Button variant="outline" onClick={() => setEditingIncident(null)}>
+                                                        Cancel
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
                         {activeMenuItem === 'permissions' && (
-                            <div className="flex items-center justify-center h-64">
-                                <p className="text-gray-500">Permissions page - Coming soon</p>
+                            <div className="p-6 space-y-6">
+                                {/* Header with controls */}
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+                                    <div>
+                                        <h1 className="text-2xl font-bold text-gray-900">Permission Requests</h1>
+                                        <p className="text-gray-600">Review and manage employee permission requests</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            onClick={() => setPermissionsViewMode(permissionsViewMode === 'table' ? 'stats' : 'table')}
+                                            variant="outline"
+                                            className="flex items-center gap-2"
+                                        >
+                                            {permissionsViewMode === 'table' ? <TrendingUp className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+                                            {permissionsViewMode === 'table' ? 'Statistics' : 'Table View'}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Filters */}
+                                <Card>
+                                    <CardContent className="p-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                                                <Input
+                                                    placeholder="Search requests..."
+                                                    value={permissionsSearchTerm}
+                                                    onChange={(e) => setPermissionsSearchTerm(e.target.value)}
+                                                    className="pl-10"
+                                                />
+                                            </div>
+                                            <div>
+                                                <select
+                                                    value={permissionsStatusFilter}
+                                                    onChange={(e) => setPermissionsStatusFilter(e.target.value)}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="">All Status</option>
+                                                    <option value="pending">Pending</option>
+                                                    <option value="under_review">Under Review</option>
+                                                    <option value="approved">Approved</option>
+                                                    <option value="rejected">Rejected</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <select
+                                                    value={permissionsTypeFilter}
+                                                    onChange={(e) => setPermissionsTypeFilter(e.target.value)}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="">All Types</option>
+                                                    <option value="overtime">Overtime</option>
+                                                    <option value="vacation">Vacation</option>
+                                                    <option value="sick_leave">Sick Leave</option>
+                                                    <option value="special_access">Special Access</option>
+                                                    <option value="early_leave">Early Leave</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <select
+                                                    value={permissionsPriorityFilter}
+                                                    onChange={(e) => setPermissionsPriorityFilter(e.target.value)}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                >
+                                                    <option value="">All Priority</option>
+                                                    <option value="urgent">Urgent</option>
+                                                    <option value="high">High</option>
+                                                    <option value="normal">Normal</option>
+                                                    <option value="low">Low</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    type="date"
+                                                    placeholder="From Date"
+                                                    value={permissionsDateFrom}
+                                                    onChange={(e) => setPermissionsDateFrom(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    type="date"
+                                                    placeholder="To Date"
+                                                    value={permissionsDateTo}
+                                                    onChange={(e) => setPermissionsDateTo(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Button onClick={() => {
+                                                    setPermissionsSearchTerm('');
+                                                    setPermissionsStatusFilter('');
+                                                    setPermissionsTypeFilter('');
+                                                    setPermissionsPriorityFilter('');
+                                                    setPermissionsDateFrom('');
+                                                    setPermissionsDateTo('');
+                                                }} variant="outline" className="w-full">
+                                                    <Filter className="h-4 w-4 mr-2" />
+                                                    Clear Filters
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                {/* Statistics View */}
+                                {permissionsViewMode === 'stats' && permissionsStats && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {/* Summary Cards */}
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <Shield className="h-8 w-8 text-blue-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Total Requests</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{permissionsStats.total_requests}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <Clock className="h-8 w-8 text-yellow-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Pending</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{permissionsStats.pending_requests}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <CheckCircle className="h-8 w-8 text-green-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Approved</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{permissionsStats.approved_requests}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                            <CardContent className="p-6">
+                                                <div className="flex items-center">
+                                                    <AlertTriangle className="h-8 w-8 text-red-600" />
+                                                    <div className="ml-4">
+                                                        <p className="text-sm font-medium text-gray-600">Urgent</p>
+                                                        <p className="text-2xl font-bold text-gray-900">{permissionsStats.urgent_requests}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Request Types Breakdown */}
+                                        <Card className="lg:col-span-2">
+                                            <CardHeader>
+                                                <CardTitle>Request Types</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {Object.entries(permissionsStats.requests_by_type).map(([type, count]) => (
+                                                        <div key={type} className="flex items-center justify-between">
+                                                            <div className="flex items-center space-x-3">
+                                                                {getRequestTypeBadge(type)}
+                                                                <span className="text-sm text-gray-600">
+                                                                    {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-sm font-semibold text-gray-900">{count}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+
+                                        {/* Recent Requests */}
+                                        <Card className="lg:col-span-2">
+                                            <CardHeader>
+                                                <CardTitle>Recent Requests</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-4">
+                                                    {permissionsStats.recent_requests.slice(0, 5).map((request) => (
+                                                        <div key={request.id} className="flex items-start space-x-3 p-3 border rounded-lg">
+                                                            <div className="flex-1">
+                                                                <p className="text-sm font-medium text-gray-900">
+                                                                    {request.title}
+                                                                </p>
+                                                                <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                                                                    {request.description}
+                                                                </p>
+                                                                <div className="flex items-center space-x-2 mt-2">
+                                                                    {getRequestTypeBadge(request.request_type)}
+                                                                    {getPriorityBadge(request.priority)}
+                                                                    {getPermissionStatusBadge(request.status)}
+                                                                </div>
+                                                                <span className="text-xs text-gray-500">
+                                                                    by {request.requester_name}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-xs text-gray-500">
+                                                                {new Date(request.created_at).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Table View */}
+                                {permissionsViewMode === 'table' && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Permission Requests</CardTitle>
+                                            <CardDescription>
+                                                {permissionsLoading ? 'Loading...' : `${filteredPermissionsData.length} requests found`}
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {permissionsLoading ? (
+                                                <div className="text-center py-8">
+                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                                    <p className="text-gray-500 mt-2">Loading permissions...</p>
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full border-collapse border border-gray-300">
+                                                        <thead>
+                                                            <tr className="bg-gray-50">
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">ID</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Title</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Type</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Priority</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Status</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Requester</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Requested Date</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Created</th>
+                                                                <th className="border border-gray-300 p-3 text-left font-semibold">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {filteredPermissionsData.map((request) => (
+                                                                <tr key={request.id} className="hover:bg-gray-50">
+                                                                    <td className="border border-gray-300 p-3">#{request.id}</td>
+                                                                    <td className="border border-gray-300 p-3 max-w-xs">
+                                                                        <p className="font-medium line-clamp-1">{request.title}</p>
+                                                                        <p className="text-xs text-gray-500 line-clamp-2">{request.description}</p>
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">{getRequestTypeBadge(request.request_type)}</td>
+                                                                    <td className="border border-gray-300 p-3">{getPriorityBadge(request.priority)}</td>
+                                                                    <td className="border border-gray-300 p-3">{getPermissionStatusBadge(request.status)}</td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        <div>
+                                                                            <p className="font-medium">{request.requester_name}</p>
+                                                                            <p className="text-xs text-gray-500">{request.requester_email}</p>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        {request.requested_date 
+                                                                            ? new Date(request.requested_date).toLocaleDateString() 
+                                                                            : '-'}
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        {new Date(request.created_at).toLocaleDateString()}
+                                                                    </td>
+                                                                    <td className="border border-gray-300 p-3">
+                                                                        <div className="flex gap-2">
+                                                                            {request.status === 'pending' && (
+                                                                                <>
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        className="text-green-600 hover:bg-green-50"
+                                                                                        onClick={() => updatePermissionRequest(request.id, { 
+                                                                                            status: 'approved',
+                                                                                            manager_response: 'Approved by manager'
+                                                                                        })}
+                                                                                    >
+                                                                                        Approve
+                                                                                    </Button>
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        className="text-red-600 hover:bg-red-50"
+                                                                                        onClick={() => setReviewingPermission(request)}
+                                                                                    >
+                                                                                        Review
+                                                                                    </Button>
+                                                                                </>
+                                                                            )}
+                                                                            {request.status !== 'pending' && (
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    variant="ghost"
+                                                                                    onClick={() => setReviewingPermission(request)}
+                                                                                >
+                                                                                    View
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+
+                                                    {filteredPermissionsData.length === 0 && (
+                                                        <div className="text-center py-8 text-gray-500">
+                                                            No permission requests found
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {/* Review Modal */}
+                                {reviewingPermission && (
+                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                        <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                                            <h3 className="text-lg font-semibold mb-4">Permission Request #{reviewingPermission.id}</h3>
+                                            
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Requester</label>
+                                                        <p className="text-sm text-gray-900">{reviewingPermission.requester_name}</p>
+                                                        <p className="text-xs text-gray-500">{reviewingPermission.requester_email}</p>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                                        {getRequestTypeBadge(reviewingPermission.request_type)}
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                                                        {getPriorityBadge(reviewingPermission.priority)}
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                                        {getPermissionStatusBadge(reviewingPermission.status)}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                                                    <p className="text-sm text-gray-900">{reviewingPermission.title}</p>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{reviewingPermission.description}</p>
+                                                </div>
+
+                                                {reviewingPermission.requested_date && (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Requested Date</label>
+                                                        <p className="text-sm text-gray-900">
+                                                            {new Date(reviewingPermission.requested_date).toLocaleDateString()}
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {reviewingPermission.requested_hours && (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Requested Hours</label>
+                                                        <p className="text-sm text-gray-900">{reviewingPermission.requested_hours}</p>
+                                                    </div>
+                                                )}
+
+                                                {reviewingPermission.manager_response && (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">Manager Response</label>
+                                                        <p className="text-sm text-gray-900 whitespace-pre-wrap">{reviewingPermission.manager_response}</p>
+                                                    </div>
+                                                )}
+
+                                                {reviewingPermission.status === 'pending' && (
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">Manager Response</label>
+                                                        <textarea
+                                                            value={reviewResponse}
+                                                            onChange={(e) => setReviewResponse(e.target.value)}
+                                                            placeholder="Add your response or reason for decision..."
+                                                            className="w-full p-3 border border-gray-300 rounded-md"
+                                                            rows={3}
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                <div className="flex gap-2">
+                                                    {reviewingPermission.status === 'pending' && (
+                                                        <>
+                                                            <Button 
+                                                                onClick={() => updatePermissionRequest(reviewingPermission.id, {
+                                                                    status: 'approved',
+                                                                    manager_response: reviewResponse || 'Approved by manager'
+                                                                })}
+                                                                className="bg-green-600 hover:bg-green-700"
+                                                            >
+                                                                Approve
+                                                            </Button>
+                                                            <Button 
+                                                                onClick={() => updatePermissionRequest(reviewingPermission.id, {
+                                                                    status: 'rejected',
+                                                                    manager_response: reviewResponse || 'Rejected by manager'
+                                                                })}
+                                                                className="bg-red-600 hover:bg-red-700"
+                                                            >
+                                                                Reject
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                    <Button 
+                                                        variant="outline" 
+                                                        onClick={() => {
+                                                            setReviewingPermission(null);
+                                                            setReviewResponse('');
+                                                        }}
+                                                    >
+                                                        Close
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
