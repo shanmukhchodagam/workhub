@@ -24,7 +24,22 @@ import {
     Users,
     ChevronLeft,
     Home,
-    Send
+    Send,
+    Crown,
+    CreditCard,
+    Lock,
+    Palette,
+    Globe,
+    Download,
+    Upload,
+    Database,
+    Zap,
+    Mail,
+    Smartphone,
+    Key,
+    Trash2,
+    UserCog,
+    Settings2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -70,7 +85,7 @@ export default function ManagerDashboard() {
         { id: 'incidents', label: 'Incidents & Reports', icon: FileText },
         { id: 'permissions', label: 'Permissions', icon: Shield },
         { id: 'work-assignment', label: 'Work Assignment', icon: Users },
-        { id: 'team', label: 'Team Management', icon: Settings }
+        { id: 'team', label: 'Team Management', icon: UserCog }
     ];
 
     // Add Employee State
@@ -92,6 +107,26 @@ export default function ManagerDashboard() {
     const [chatMessages, setChatMessages] = useState<any[]>([]);
     const [messageInput, setMessageInput] = useState("");
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+
+    // Settings State
+    const [activeSettingsTab, setActiveSettingsTab] = useState('account');
+    const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+    const [deleteConfirmText, setDeleteConfirmText] = useState("");
+    const [teamName, setTeamName] = useState("");
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const [settingsError, setSettingsError] = useState("");
+    const [settingsSuccess, setSettingsSuccess] = useState("");
+
+    // Handler functions
+    const handleLogout = () => {
+        logout();
+    };
 
     const wsUrl = user ? `ws://localhost:8000/ws/manager/${user.user_id}` : '';
     const { messages, isConnected } = useWebSocket(wsUrl);
@@ -450,9 +485,10 @@ export default function ManagerDashboard() {
                             variant="ghost" 
                             className={cn(
                                 "w-full justify-start",
-                                sidebarCollapsed ? "px-2" : "px-3"
+                                sidebarCollapsed ? "px-2" : "px-3",
+                                activeMenuItem === 'settings' ? "bg-blue-50 text-blue-600" : "hover:bg-gray-100"
                             )}
-                            onClick={() => alert('Settings coming soon!')}
+                            onClick={() => setActiveMenuItem('settings')}
                         >
                             <Settings className="h-5 w-5 mr-3 flex-shrink-0" />
                             {!sidebarCollapsed && <span>Settings</span>}
@@ -463,7 +499,7 @@ export default function ManagerDashboard() {
                                 "w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50",
                                 sidebarCollapsed ? "px-2" : "px-3"
                             )}
-                            onClick={logout}
+                            onClick={handleLogout}
                         >
                             <LogOut className="h-5 w-5 mr-3 flex-shrink-0" />
                             {!sidebarCollapsed && <span>Logout</span>}
@@ -902,8 +938,609 @@ export default function ManagerDashboard() {
                                 </Card>
                             </div>
                         )}
+
+                        {/* Settings Section */}
+                        {activeMenuItem === 'settings' && (
+                            <div className="space-y-6">
+                                {/* Settings Header */}
+                                <div className="border-b pb-6">
+                                    <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+                                    <p className="text-gray-600 mt-1">Manage your account, team, and platform preferences</p>
+                                </div>
+
+                                {/* Settings Navigation */}
+                                <div className="flex flex-wrap gap-2 mb-6">
+                                    {[
+                                        { id: 'account', label: 'Account', icon: UserCog },
+                                        { id: 'security', label: 'Security', icon: Lock },
+                                        { id: 'team-settings', label: 'Team Settings', icon: Users },
+                                        { id: 'billing', label: 'Billing & Premium', icon: CreditCard },
+                                        { id: 'notifications', label: 'Notifications', icon: Mail },
+                                        { id: 'integrations', label: 'Integrations', icon: Zap },
+                                        { id: 'data', label: 'Data Management', icon: Database },
+                                        { id: 'system', label: 'System', icon: Settings2 }
+                                    ].map((tab) => {
+                                        const IconComponent = tab.icon;
+                                        return (
+                                            <Button
+                                                key={tab.id}
+                                                variant={activeSettingsTab === tab.id ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => setActiveSettingsTab(tab.id)}
+                                                className="flex items-center gap-2"
+                                            >
+                                                <IconComponent className="h-4 w-4" />
+                                                {tab.label}
+                                            </Button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Account Settings */}
+                                {activeSettingsTab === 'account' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <UserCog className="h-5 w-5" />
+                                                    Account Information
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Manage your personal account details and preferences
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="text-sm font-medium text-gray-700 block mb-2">Full Name</label>
+                                                        <Input
+                                                            value={user?.full_name || ''}
+                                                            disabled
+                                                            className="bg-gray-50"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-sm font-medium text-gray-700 block mb-2">Email</label>
+                                                        <Input
+                                                            value={user?.email || ''}
+                                                            disabled
+                                                            className="bg-gray-50"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="pt-4 border-t">
+                                                    <h4 className="font-medium text-gray-900 mb-3">Account Actions</h4>
+                                                    <div className="flex gap-3">
+                                                        <Button 
+                                                            onClick={handleLogout}
+                                                            variant="outline"
+                                                            className="flex items-center gap-2"
+                                                        >
+                                                            <LogOut className="h-4 w-4" />
+                                                            Sign Out
+                                                        </Button>
+                                                        <Button 
+                                                            onClick={() => setShowDeleteAccountModal(true)}
+                                                            variant="destructive"
+                                                            className="flex items-center gap-2"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                            Delete Account
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Security Settings */}
+                                {activeSettingsTab === 'security' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Lock className="h-5 w-5" />
+                                                    Password & Security
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Manage your password and security preferences
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4">
+                                                <Button 
+                                                    onClick={() => setShowPasswordModal(true)}
+                                                    variant="outline"
+                                                    className="flex items-center gap-2"
+                                                >
+                                                    <Key className="h-4 w-4" />
+                                                    Change Password
+                                                </Button>
+                                                <div className="p-4 border rounded-lg bg-blue-50">
+                                                    <div className="flex items-start gap-3">
+                                                        <Smartphone className="h-5 w-5 text-blue-600 mt-0.5" />
+                                                        <div>
+                                                            <h4 className="font-medium text-blue-900">Two-Factor Authentication</h4>
+                                                            <p className="text-sm text-blue-700 mt-1">
+                                                                Coming soon - Add an extra layer of security to your account
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Team Settings */}
+                                {activeSettingsTab === 'team-settings' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Users className="h-5 w-5" />
+                                                    Team Configuration
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Configure team-wide settings and permissions
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="text-sm font-medium text-gray-700 block mb-2">Team Name</label>
+                                                        <Input
+                                                            value={teamName}
+                                                            onChange={(e) => setTeamName(e.target.value)}
+                                                            placeholder="Enter team name"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-sm font-medium text-gray-700 block mb-2">Team Size Limit</label>
+                                                        <Input
+                                                            value="10 members"
+                                                            disabled
+                                                            className="bg-gray-50"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <h4 className="font-medium text-gray-900">Team Permissions</h4>
+                                                    <div className="space-y-2">
+                                                        {[
+                                                            'Allow workers to create tasks',
+                                                            'Enable file sharing between team members',
+                                                            'Allow workers to view other workers\' tasks',
+                                                            'Enable team-wide notifications'
+                                                        ].map((permission, index) => (
+                                                            <label key={index} className="flex items-center space-x-2">
+                                                                <input type="checkbox" defaultChecked className="rounded" />
+                                                                <span className="text-sm text-gray-700">{permission}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <Button className="mt-4">Save Team Settings</Button>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Billing & Premium */}
+                                {activeSettingsTab === 'billing' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <CreditCard className="h-5 w-5" />
+                                                    Billing & Subscription
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Manage your subscription and billing information
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-6">
+                                                <div className="p-6 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50">
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <h3 className="text-lg font-semibold text-gray-900">Current Plan: Free</h3>
+                                                            <p className="text-gray-600 mt-1">Basic features for small teams</p>
+                                                            <ul className="mt-3 space-y-1 text-sm text-gray-600">
+                                                                <li>• Up to 5 team members</li>
+                                                                <li>• Basic task management</li>
+                                                                <li>• 1GB file storage</li>
+                                                            </ul>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-gray-900">$0</div>
+                                                            <div className="text-gray-600">per month</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-6 border rounded-lg border-blue-200 bg-blue-50">
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <h3 className="text-lg font-semibold text-blue-900">Upgrade to Premium</h3>
+                                                            <p className="text-blue-700 mt-1">Unlock advanced features and AI capabilities</p>
+                                                            <ul className="mt-3 space-y-1 text-sm text-blue-700">
+                                                                <li>• Unlimited team members</li>
+                                                                <li>• Advanced AI-powered automation</li>
+                                                                <li>• 100GB file storage</li>
+                                                                <li>• Priority support</li>
+                                                                <li>• Custom integrations</li>
+                                                            </ul>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-blue-900">$29</div>
+                                                            <div className="text-blue-700">per month</div>
+                                                        </div>
+                                                    </div>
+                                                    <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700">
+                                                        Upgrade to Premium
+                                                    </Button>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Notifications */}
+                                {activeSettingsTab === 'notifications' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Mail className="h-5 w-5" />
+                                                    Notification Preferences
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Choose how you want to be notified about important events
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-6">
+                                                <div className="space-y-4">
+                                                    <h4 className="font-medium text-gray-900">Email Notifications</h4>
+                                                    <div className="space-y-3">
+                                                        {[
+                                                            'New task assignments',
+                                                            'Task completions',
+                                                            'Team member updates',
+                                                            'System maintenance alerts',
+                                                            'Weekly summaries'
+                                                        ].map((notification, index) => (
+                                                            <label key={index} className="flex items-center justify-between">
+                                                                <span className="text-sm text-gray-700">{notification}</span>
+                                                                <input type="checkbox" defaultChecked className="rounded" />
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-4 pt-4 border-t">
+                                                    <h4 className="font-medium text-gray-900">Push Notifications</h4>
+                                                    <div className="space-y-3">
+                                                        {[
+                                                            'Urgent task updates',
+                                                            'Direct messages',
+                                                            'System alerts'
+                                                        ].map((notification, index) => (
+                                                            <label key={index} className="flex items-center justify-between">
+                                                                <span className="text-sm text-gray-700">{notification}</span>
+                                                                <input type="checkbox" defaultChecked className="rounded" />
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <Button className="mt-6">Save Notification Preferences</Button>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Integrations */}
+                                {activeSettingsTab === 'integrations' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Zap className="h-5 w-5" />
+                                                    Third-party Integrations
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Connect WorkHub with your favorite tools and services
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-6">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {[
+                                                        { name: 'Slack', description: 'Team communication', status: 'available' },
+                                                        { name: 'Google Drive', description: 'File storage & sharing', status: 'available' },
+                                                        { name: 'Microsoft Teams', description: 'Video meetings', status: 'coming-soon' },
+                                                        { name: 'Zapier', description: 'Workflow automation', status: 'coming-soon' }
+                                                    ].map((integration) => (
+                                                        <div key={integration.name} className="p-4 border rounded-lg">
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <h4 className="font-medium text-gray-900">{integration.name}</h4>
+                                                                    <p className="text-sm text-gray-600 mt-1">{integration.description}</p>
+                                                                </div>
+                                                                {integration.status === 'available' ? (
+                                                                    <Button size="sm" variant="outline">Connect</Button>
+                                                                ) : (
+                                                                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                                                        Coming Soon
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* Data Management */}
+                                {activeSettingsTab === 'data' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Database className="h-5 w-5" />
+                                                    Data Management
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Export, import, and manage your team's data
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-6">
+                                                <div className="space-y-4">
+                                                    <h4 className="font-medium text-gray-900">Data Export</h4>
+                                                    <p className="text-sm text-gray-600">
+                                                        Export your team's data for backup or migration purposes
+                                                    </p>
+                                                    <div className="flex gap-2">
+                                                        <Button variant="outline" className="flex items-center gap-2">
+                                                            <Download className="h-4 w-4" />
+                                                            Export Tasks
+                                                        </Button>
+                                                        <Button variant="outline" className="flex items-center gap-2">
+                                                            <Download className="h-4 w-4" />
+                                                            Export Team Data
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-4 pt-4 border-t">
+                                                    <h4 className="font-medium text-gray-900">Data Import</h4>
+                                                    <p className="text-sm text-gray-600">
+                                                        Import data from other project management tools
+                                                    </p>
+                                                    <Button variant="outline" className="flex items-center gap-2">
+                                                        <Upload className="h-4 w-4" />
+                                                        Import Data
+                                                    </Button>
+                                                </div>
+
+                                                <div className="p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+                                                    <div className="flex items-start gap-3">
+                                                        <Database className="h-5 w-5 text-yellow-600 mt-0.5" />
+                                                        <div>
+                                                            <h4 className="font-medium text-yellow-900">Data Retention</h4>
+                                                            <p className="text-sm text-yellow-700 mt-1">
+                                                                Your data is automatically backed up daily and retained for 30 days
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+
+                                {/* System Settings */}
+                                {activeSettingsTab === 'system' && (
+                                    <div className="space-y-6">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Settings2 className="h-5 w-5" />
+                                                    System Preferences
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Configure system-wide settings and preferences
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="space-y-6">
+                                                <div className="space-y-4">
+                                                    <h4 className="font-medium text-gray-900">Appearance</h4>
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-700">Theme</p>
+                                                            <p className="text-sm text-gray-600">Choose your interface theme</p>
+                                                        </div>
+                                                        <select className="border rounded-md px-3 py-2 text-sm">
+                                                            <option>Light</option>
+                                                            <option>Dark</option>
+                                                            <option>Auto</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-4 pt-4 border-t">
+                                                    <h4 className="font-medium text-gray-900">Language & Region</h4>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="text-sm font-medium text-gray-700 block mb-2">Language</label>
+                                                            <select className="w-full border rounded-md px-3 py-2 text-sm">
+                                                                <option>English (US)</option>
+                                                                <option>English (UK)</option>
+                                                                <option>Spanish</option>
+                                                                <option>French</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-sm font-medium text-gray-700 block mb-2">Timezone</label>
+                                                            <select className="w-full border rounded-md px-3 py-2 text-sm">
+                                                                <option>UTC-5 (Eastern Time)</option>
+                                                                <option>UTC-6 (Central Time)</option>
+                                                                <option>UTC-7 (Mountain Time)</option>
+                                                                <option>UTC-8 (Pacific Time)</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <Button className="mt-6">Save System Settings</Button>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </main>
                 </div>
+
+                {/* Settings Modals */}
+                {/* Delete Account Modal */}
+                {showDeleteAccountModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <Card className="w-full max-w-md bg-white shadow-xl">
+                            <CardHeader>
+                                <CardTitle className="text-red-600 flex items-center gap-2">
+                                    <Trash2 className="h-5 w-5" />
+                                    Delete Account
+                                </CardTitle>
+                                <CardDescription>
+                                    This action cannot be undone. All your data will be permanently removed.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                                    <h4 className="font-medium text-red-900 mb-2">What will be deleted:</h4>
+                                    <ul className="text-sm text-red-700 space-y-1">
+                                        <li>• Your account and profile</li>
+                                        <li>• All team data and members</li>
+                                        <li>• Task history and files</li>
+                                        <li>• Chat messages and communications</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 block mb-2">
+                                        Type "DELETE" to confirm:
+                                    </label>
+                                    <Input
+                                        value={deleteConfirmText}
+                                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                        placeholder="DELETE"
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-2 pt-4">
+                                    <Button 
+                                        variant="outline" 
+                                        onClick={() => {
+                                            setShowDeleteAccountModal(false);
+                                            setDeleteConfirmText('');
+                                        }}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button 
+                                        variant="destructive"
+                                        disabled={deleteConfirmText !== 'DELETE'}
+                                        onClick={() => {
+                                            // Handle account deletion
+                                            console.log('Account deletion confirmed');
+                                        }}
+                                    >
+                                        Delete Account
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
+                {/* Change Password Modal */}
+                {showPasswordModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <Card className="w-full max-w-md bg-white shadow-xl">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Key className="h-5 w-5" />
+                                    Change Password
+                                </CardTitle>
+                                <CardDescription>
+                                    Enter your current password and choose a new one
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    // Handle password change
+                                    console.log('Password change submitted');
+                                }} className="space-y-4">
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 block mb-2">
+                                            Current Password
+                                        </label>
+                                        <Input
+                                            type="password"
+                                            value={currentPassword}
+                                            onChange={(e) => setCurrentPassword(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 block mb-2">
+                                            New Password
+                                        </label>
+                                        <Input
+                                            type="password"
+                                            value={newPassword}
+                                            onChange={(e) => setNewPassword(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 block mb-2">
+                                            Confirm New Password
+                                        </label>
+                                        <Input
+                                            type="password"
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    {passwordError && (
+                                        <p className="text-sm text-red-600">{passwordError}</p>
+                                    )}
+                                    <div className="flex justify-end gap-2 pt-4">
+                                        <Button 
+                                            type="button" 
+                                            variant="outline" 
+                                            onClick={() => {
+                                                setShowPasswordModal(false);
+                                                setCurrentPassword('');
+                                                setNewPassword('');
+                                                setConfirmPassword('');
+                                                setPasswordError('');
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button type="submit">
+                                            Update Password
+                                        </Button>
+                                    </div>
+                                </form>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
 
                 {/* Edit Member Modal */}
                 {editingMember && (
