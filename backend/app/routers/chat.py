@@ -4,6 +4,7 @@ from app.core.config import settings
 import json
 import redis.asyncio as redis
 import asyncio
+import httpx
 from app.core.database import AsyncSessionLocal
 from app.models.message import Message
 from app.models.user import User
@@ -21,6 +22,33 @@ from pydantic import BaseModel
 router = APIRouter()
 
 redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+
+# Agent service URL
+AGENT_SERVICE_URL = "http://agent_service:8001"
+
+async def process_message_with_agent(message: str, sender_id: int, chat_id: int):
+    """Send message to AI agent for processing"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{AGENT_SERVICE_URL}/process-message",
+                json={
+                    "message": message,
+                    "sender_id": sender_id,
+                    "chat_id": chat_id
+                },
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                result = response.json()
+                print(f"🤖 Agent processed message: Intent={result['intent']}, Confidence={result['confidence']}")
+                return result
+            else:
+                print(f"❌ Agent request failed: {response.status_code}")
+                return None
+    except Exception as e:
+        print(f"❌ Error calling agent: {e}")
+        return None
 
 @router.websocket("/ws/worker/{client_id}")
 async def websocket_worker_endpoint(websocket: WebSocket, client_id: int):
@@ -64,6 +92,16 @@ async def websocket_worker_endpoint(websocket: WebSocket, client_id: int):
                 
                 print(f"Message saved to database with ID: {message.id}")
                 
+                # 🤖 CALL AI AGENT TO PROCESS MESSAGE
+                agent_result = await process_message_with_agent(data, client_id, chat_session.id)
+                if agent_result:
+                    # Send agent response back to worker
+                    await manager.send_to_worker(client_id, f"🤖 AI: {agent_result['response']}")
+                    
+                    # If agent flagged for manager attention, add urgent tag
+                    if agent_result.get('requires_manager_attention'):
+                        data = f"⚠️ URGENT: {data} (AI detected: {agent_result['intent']})"
+                
                 # Find team manager and send ALL messages to manager
                 manager_result = await session.execute(
                     select(User).where(
@@ -74,14 +112,15 @@ async def websocket_worker_endpoint(websocket: WebSocket, client_id: int):
                 team_manager = manager_result.scalar_one_or_none()
                 
                 if team_manager:
-                    print(f"Sending ALL worker messages to manager: {team_manager.id}")
-                    # Send to manager via WebSocket
+                    print(f"Sending worker message to manager: {team_manager.id}")
+                    # Send to manager via WebSocket with agent context
                     message_data = {
                         "type": "worker_message",
                         "content": data,
                         "sender_id": client_id,
                         "sender_name": user.full_name or user.email,
-                        "timestamp": message.created_at.isoformat()
+                        "timestamp": message.created_at.isoformat(),
+                        "agent_analysis": agent_result if agent_result else None
                     }
                     success = await manager.send_to_manager(team_manager.id, message_data)
                     print(f"Message sent to manager: {success}")

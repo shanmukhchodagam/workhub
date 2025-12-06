@@ -47,10 +47,13 @@ services:
     build: ./langgraph
     container_name: workhub-agent
     restart: always
+    ports:
+      - "8001:8001"
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_URL=redis://redis:6379/0
       - BACKEND_URL=http://backend:8000
+      - GROQ_API_KEY=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
     depends_on:
       - redis
       - backend
